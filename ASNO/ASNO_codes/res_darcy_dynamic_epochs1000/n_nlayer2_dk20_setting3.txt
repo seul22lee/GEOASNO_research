@@ -1,0 +1,1 @@
+ntrain, learning_rate, scheduler_gamma, wd, overfit_train_loss, best_train_loss, best_test_loss, best_epoch
