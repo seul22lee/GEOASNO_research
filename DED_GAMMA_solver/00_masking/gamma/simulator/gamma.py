@@ -696,6 +696,14 @@ class heat_solve_mgr():
         
 
     def update_fluxes(self):
+        if self.current_step % 10 == 0:
+            print(f"\n[step {self.current_step}] ===== FLUX DEBUG =====")
+            print(f"  active_surface count: {self.domain.active_surface.sum()}")
+            print(f"  laser_state: {self.laser_state}")
+            print(f"  q_in        : {self.q_in:.3e}")
+            print(f"  laser_loc   : {self.laser_loc}")
+    
+
         surface = self.domain.surface[self.domain.active_surface]
         nodes = self.domain.nodes
         Nip_sur = self.domain.Nip_sur
@@ -712,9 +720,15 @@ class heat_solve_mgr():
         laser_state = self.laser_state
         
         ip_pos = self.domain.surf_ip_pos[self.domain.active_surface]
+
+        if self.current_step % 10 == 0:
+            print(f"[step {self.current_step}] surface IP mean Z: {ip_pos[:,:,2].mean():.4f}")
     
         r2 = cp.square(cp.linalg.norm(ip_pos-laser_loc,axis=2))
         qmov = self.cov * q_in * laser_state /(cp.pi * r_beam**2)*cp.exp(-self.cov * r2 / (r_beam**2)) * surface_xy 
+
+        #print(f"Step {self.current_step}: laser_state={laser_state}, qmov max={qmov.max():.3f}, min={qmov.min():.3f}, mean={qmov.mean():.3f}")
+        #print(f"laser_loc = {laser_loc}")
 
         temperature_nodes = self.temperature[surface]
         temperature_ip = Nip_sur@temperature_nodes[:,:,cp.newaxis]
@@ -729,14 +743,27 @@ class heat_solve_mgr():
         q = ((qmov+qrad+qconv)*detJac)[:,:,cp.newaxis].repeat(4,axis=2)*Nip_sur
         scatter_add(self.rhs,surface.flatten(),q.sum(axis=1).flatten())
 
+        if self.current_step % 10 == 0:
+            print(f"  qmov max    : {qmov.max():.3e}, mean: {qmov.mean():.3e}")
+            print(f"  rhs  max    : {self.rhs.max():.3f}, sum : {self.rhs.sum():.3f}")
+            print("========================================\n")
+
+
+
     def time_integration(self):
         domain = self.domain
         domain.update_birth()
         self.update_cp_cond()
         self.update_mvec_stifness()
 
+        if self.current_step == 0:
+            print("=== toolpath first 10 steps ===")
+            print(domain.toolpath[:10, :])
+
+
         self.laser_loc = domain.toolpath[self.current_step,0:3]
         self.laser_state = domain.toolpath[self.current_step,3]
+        
         self.update_fluxes()
 
         self.temperature[domain.active_nodes] += domain.dt*self.rhs[domain.active_nodes]/self.m_vec[domain.active_nodes]
@@ -746,6 +773,10 @@ class heat_solve_mgr():
         
         self.current_step += 1
         domain.current_sim_time += domain.dt
+
+        if self.current_step % 10 == 0:
+            print(f"[step {self.current_step}] temperature max: {self.temperature.max():.2f}")
+
 
     def update_field_no_integration(self):
         '''Updates the surfaces but does not use the heat solver'''
